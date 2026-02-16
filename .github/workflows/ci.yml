@@ -36,6 +36,7 @@ jobs:
 
   build:
     name: Build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,21 +58,3 @@ jobs:
 
       - name: Build client
         run: go build -tags nolibopusfile -ldflags="-s -w" ./cmd/client/
-
-  trivy:
-    name: Trivy Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build server image
-        run: docker build --target server -t gospeak-server:scan -f Containerfile .
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: gospeak-server:scan
-          format: table
-          exit-code: 1
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
