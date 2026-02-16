@@ -2,16 +2,42 @@
 
 GoSpeak uses PortAudio for hardware I/O and Opus for codec, with a Voice Activity Detection (VAD) system to suppress silence.
 
+The audio subsystem follows an **interface-based (onion) architecture**,  this allows swapping audio backends for different platforms (e.g., Android Oboe, iOS AVAudioEngine) without changing the client logic.
+
+## Audio Interfaces
+
+All audio interfaces are defined in [`pkg/audio/interface.go`](../pkg/audio/interface.go):
+
+| Interface | Methods | Default Implementation |
+|-----------|---------|------------------------|
+| `Capturer` | `Start()`, `ReadFrame()`, `Stop()`, `Close()` | `CaptureDevice` (PortAudio) |
+| `Player` | `Start()`, `WriteFrame()`, `Stop()` | `PlaybackDevice` (PortAudio) |
+| `AudioEncoder` | `Encode(pcm) → bytes` | `Encoder` (Opus) |
+| `AudioDecoder` | `Decode(bytes) → pcm`, `DecodePLC()` | `Decoder` (Opus) |
+| `DecoderFactory` | `NewDecoder() → AudioDecoder` | `defaultDecoderFactory` |
+| `VoiceDetector` | `Process()`, `IsActive()`, `PreBufferedFrames()`, `SetThreshold()` | `VAD` (energy-based) |
+| `DeviceLister` | `ListInputDevices()`, `ListOutputDevices()` | Functions in `devices.go` |
+
+Compile-time checks (`var _ Interface = (*Impl)(nil)`) ensure the default implementations satisfy their interfaces.
+
 ## Audio Stack
 
 ```mermaid
 graph TB
-    subgraph "Audio Libraries"
+    subgraph "Interfaces (pkg/audio)"
+        ICAP[Capturer]
+        IPB[Player]
+        IENC[AudioEncoder]
+        IDEC[AudioDecoder]
+        IVAD[VoiceDetector]
+    end
+
+    subgraph "Implementations (pkg/audio)"
         PA[PortAudio 19<br/>Cross-platform audio I/O]
         OPUS[Opus 1.5<br/>Low-latency speech codec]
     end
 
-    subgraph "GoSpeak Audio Package"
+    subgraph "Concrete Types"
         CAP[CaptureDevice<br/>Microphone input]
         PB[PlaybackDevice<br/>Speaker output]
         ENC[Encoder<br/>PCM → Opus]
@@ -25,9 +51,15 @@ graph TB
     OPUS --> ENC
     OPUS --> DEC
 
-    CAP --> VAD
-    VAD --> ENC
-    DEC --> PB
+    CAP -.->|implements| ICAP
+    PB -.->|implements| IPB
+    ENC -.->|implements| IENC
+    DEC -.->|implements| IDEC
+    VAD -.->|implements| IVAD
+
+    ICAP --> IVAD
+    IVAD --> IENC
+    IDEC --> IPB
 ```
 
 ## Audio Parameters

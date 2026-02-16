@@ -75,18 +75,26 @@ cmd/
   server/          Server CLI entry point
   client/          Client entry point
 pkg/
-  audio/           PortAudio I/O, Opus codec, VAD
+  audio/           Audio interfaces + PortAudio/Opus implementations
   client/          Client engine, networking, settings
   crypto/          AES-128-GCM, key generation, hashing
-  model/           Core domain types
+  model/           Core domain types + validation
   protocol/        Wire protocol (length-prefixed JSON)
   protocol/pb/     Message type definitions
   rbac/            Role-based access control
   server/          Server core (control, voice, config)
-  store/           SQLite persistence
+  store/           DataStore interface + SQLite implementation
 ui/                Fyne desktop GUI
 docs/              Documentation with Mermaid diagrams
 ```
+
+## Architecture Notes
+
+GoSpeak follows an **onion architecture**, the server and client depend on interfaces, not concrete implementations:
+
+e.g. **`store.DataStore`**, the server uses this interface for all persistence. The default implementation is SQLite, but alternative backends (PostgreSQL, in-memory for tests) can be added by implementing the interface. See [`pkg/store/interface.go`](pkg/store/interface.go).
+
+When contributing new features, prefer depending on interfaces rather than concrete types.
 
 ## Areas for Contribution
 

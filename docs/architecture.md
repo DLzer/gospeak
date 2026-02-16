@@ -1,6 +1,6 @@
 # GoSpeak Architecture
 
-GoSpeak is a privacy-focused voice communication server and client built in Go. It follows a Selective Forwarding Unit (SFU) architecture — the server relays encrypted voice packets between clients without decoding them.
+GoSpeak is a privacy-focused voice communication server and client built in Go. It follows a Selective Forwarding Unit (SFU) architecture, the server relays encrypted voice packets between clients without decoding them.
 
 ## High-Level Overview
 
@@ -57,11 +57,11 @@ graph LR
     SRV --> CRYPTO
     SRV --> MODEL
     SRV --> RBAC
-    SRV --> STORE
+    SRV -.->|store.DataStore| STORE
 
     CLT --> PROTO
     CLT --> PB
-    CLT --> AUDIO
+    CLT -.->|audio interfaces| AUDIO
     CLT --> CRYPTO
 
     UI --> CLT
@@ -73,6 +73,8 @@ graph LR
     STORE --> MODEL
 ```
 
+> **Dashed arrows** indicate dependencies on interfaces. See [Onion Architecture](#onion-architecture) below.
+
 ### Package Responsibilities
 
 | Package | Description |
@@ -83,12 +85,16 @@ graph LR
 | `pkg/client` | Client engine: connection management, voice pipeline, jitter buffer, bookmarks, settings, hotkeys |
 | `pkg/protocol` | Length-prefixed JSON framing for the control plane |
 | `pkg/protocol/pb` | All control message type definitions (structs with JSON tags) |
-| `pkg/audio` | PortAudio capture/playback, Opus encode/decode, VAD (Voice Activity Detection) |
+| `pkg/audio` | Audio interfaces (`Capturer`, `Player`, `AudioEncoder`, `AudioDecoder`, `VoiceDetector`, `DecoderFactory`, `DeviceLister`) + PortAudio/Opus default implementations |
 | `pkg/crypto` | AES-128-GCM voice encryption, key generation, token hashing (SHA-256), password hashing (Argon2id) |
 | `pkg/model` | Core domain types: User, Channel, Token, Ban, Session, Role, Permission |
 | `pkg/rbac` | Role-based access control — permission matrix for User/Moderator/Admin |
-| `pkg/store` | SQLite persistence with auto-migration |
+| `pkg/store` | `DataStore` interface + SQLite implementation with auto-migration |
 | `ui` | Fyne v2 desktop GUI with channel tree, chat, settings, admin tools |
+
+## Onion Architecture
+
+GoSpeak follows an **onion (hexagonal) architecture** core business logic depends on interfaces. This allows swapping backends without touching the server or client logic.
 
 ## Server Lifecycle
 
