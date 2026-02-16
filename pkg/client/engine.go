@@ -37,20 +37,24 @@ type Engine struct {
 	voice   *VoiceClient
 	cipher  *gospeakCrypto.VoiceCipher
 
-	capture  *audio.CaptureDevice
-	playback *audio.PlaybackDevice
-	encoder  *audio.Encoder
-	vad      *audio.VAD
+	capture  audio.Capturer
+	playback audio.Player
+	encoder  audio.AudioEncoder
+	vad      audio.VoiceDetector
 
 	// Per-speaker decoders and jitter buffers
-	decoders   map[uint32]*audio.Decoder
-	jitterBufs map[uint32]*JitterBuffer
-	decoderMu  sync.Mutex
+	decoders       map[uint32]audio.AudioDecoder
+	jitterBufs     map[uint32]*JitterBuffer
+	decoderMu      sync.Mutex
+	decoderFactory audio.DecoderFactory
 
 	channels []pb.ChannelInfo
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Audio initialization function (allows platform-specific audio backends)
+	initAudioFn func() error
 
 	// Callbacks for UI updates
 	OnStateChange    func(state State)
@@ -70,14 +74,24 @@ type Engine struct {
 // NewEngine creates a new client engine.
 func NewEngine() *Engine {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Engine{
-		state:      StateDisconnected,
-		decoders:   make(map[uint32]*audio.Decoder),
-		jitterBufs: make(map[uint32]*JitterBuffer),
-		ctx:        ctx,
-		cancel:     cancel,
-		vad:        audio.NewVAD(200, 15, 3), // threshold=200, hold=300ms, prebuf=60ms
+	e := &Engine{
+		state:          StateDisconnected,
+		decoders:       make(map[uint32]audio.AudioDecoder),
+		jitterBufs:     make(map[uint32]*JitterBuffer),
+		ctx:            ctx,
+		cancel:         cancel,
+		vad:            audio.NewVAD(200, 15, 3), // threshold=200, hold=300ms, prebuf=60ms
+		decoderFactory: &defaultDecoderFactory{},
 	}
+	e.initAudioFn = e.initAudioDefault
+	return e
+}
+
+// defaultDecoderFactory creates Opus decoders (the default audio backend).
+type defaultDecoderFactory struct{}
+
+func (f *defaultDecoderFactory) NewDecoder() (audio.AudioDecoder, error) {
+	return audio.NewDecoder()
 }
 
 // Connect authenticates to the server and starts audio/voice pipelines.
@@ -158,7 +172,7 @@ func (e *Engine) Connect(controlAddr, voiceAddr, token, username string) error {
 
 	// Initialize audio devices asynchronously (PortAudio init is slow on Windows)
 	go func() {
-		if err := e.initAudio(); err != nil {
+		if err := e.initAudioFn(); err != nil {
 			slog.Error("audio init failed (continuing without audio)", "err", err)
 		}
 		// Start audio pipelines
@@ -175,8 +189,8 @@ func (e *Engine) Connect(controlAddr, voiceAddr, token, username string) error {
 	return nil
 }
 
-// initAudio initializes audio devices and codec.
-func (e *Engine) initAudio() error {
+// initAudioDefault initializes PortAudio devices and Opus codec (the default backend).
+func (e *Engine) initAudioDefault() error {
 	capture, err := audio.NewCaptureDevice(48000, 960)
 	if err != nil {
 		return fmt.Errorf("capture device: %w", err)
@@ -305,13 +319,13 @@ func (e *Engine) playbackLoop() {
 }
 
 // processIncomingVoice decrypts and plays a received voice packet.
-func (e *Engine) processIncomingVoice(pkt *protocol.VoicePacket, playback *audio.PlaybackDevice) {
+func (e *Engine) processIncomingVoice(pkt *protocol.VoicePacket, playback audio.Player) {
 	// Get or create decoder for this speaker
 	e.decoderMu.Lock()
 	dec, ok := e.decoders[pkt.SessionID]
 	if !ok {
 		var err error
-		dec, err = audio.NewDecoder()
+		dec, err = e.decoderFactory.NewDecoder()
 		if err != nil {
 			e.decoderMu.Unlock()
 			slog.Error("create decoder failed", "err", err)
@@ -782,7 +796,7 @@ func (e *Engine) handleDisconnect(reason string) {
 
 	// Clean up decoders
 	e.decoderMu.Lock()
-	e.decoders = make(map[uint32]*audio.Decoder)
+	e.decoders = make(map[uint32]audio.AudioDecoder)
 	e.jitterBufs = make(map[uint32]*JitterBuffer)
 	e.decoderMu.Unlock()
 

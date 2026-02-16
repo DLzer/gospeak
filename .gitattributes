@@ -1,0 +1,7 @@
+# Force LF line endings for Go source files so gofmt passes in Linux containers.
+*.go text eol=lf
+*.proto text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.mod text eol=lf
+*.sum text eol=lf

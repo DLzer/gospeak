@@ -91,7 +91,7 @@ func (s *Server) Shutdown() {
 }
 
 // ensureAdminToken creates an admin token only on first run (no tokens exist).
-func (s *Server) ensureAdminToken(st *store.Store) error {
+func (s *Server) ensureAdminToken(st store.DataStore) error {
 	hasTokens, err := st.HasTokens()
 	if err != nil {
 		return fmt.Errorf("server: check tokens: %w", err)
