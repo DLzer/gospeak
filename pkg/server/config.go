@@ -38,7 +38,7 @@ type UsersExport struct {
 }
 
 // LoadChannelsFromYAML reads a channels YAML file and creates/updates channels in the store.
-func LoadChannelsFromYAML(path string, st *store.Store) error {
+func LoadChannelsFromYAML(path string, st store.DataStore) error {
 	data, err := os.ReadFile(path) //nolint:gosec // path from user-provided CLI config
 	if err != nil {
 		return fmt.Errorf("read channels config: %w", err)
@@ -47,7 +47,7 @@ func LoadChannelsFromYAML(path string, st *store.Store) error {
 }
 
 // ImportChannelsFromYAML parses YAML data and creates/updates channels in the store.
-func ImportChannelsFromYAML(data []byte, st *store.Store) error {
+func ImportChannelsFromYAML(data []byte, st store.DataStore) error {
 	var cfg ChannelsConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("parse channels config: %w", err)
@@ -63,7 +63,7 @@ func ImportChannelsFromYAML(data []byte, st *store.Store) error {
 	return nil
 }
 
-func ensureChannel(st *store.Store, ch ChannelYAML, parentID int64) error {
+func ensureChannel(st store.DataStore, ch ChannelYAML, parentID int64) error {
 	// Check if channel already exists under this parent
 	existing, err := st.GetChannelByNameAndParent(ch.Name, parentID)
 	if err != nil {
@@ -100,7 +100,7 @@ func countChannels(channels []ChannelYAML) int {
 }
 
 // ExportChannelsYAML exports all channels as YAML.
-func ExportChannelsYAML(st *store.Store) ([]byte, error) {
+func ExportChannelsYAML(st store.DataStore) ([]byte, error) {
 	channels, err := st.ListChannels()
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func buildChannelTree(channels []model.Channel, parentID int64) []ChannelYAML {
 }
 
 // ExportUsersYAML exports all users as YAML.
-func ExportUsersYAML(st *store.Store) ([]byte, error) {
+func ExportUsersYAML(st store.DataStore) ([]byte, error) {
 	users, err := st.ListUsers()
 	if err != nil {
 		return nil, err

@@ -22,7 +22,7 @@ import (
 // ControlHandler handles TCP/TLS control plane connections.
 type ControlHandler struct {
 	server  *Server
-	store   *store.Store
+	store   store.DataStore
 	mu      sync.RWMutex
 	connMap map[uint32]net.Conn // sessionID -> TLS conn for sending events
 
@@ -32,7 +32,7 @@ type ControlHandler struct {
 }
 
 // newControlHandler creates a control handler.
-func newControlHandler(srv *Server, st *store.Store) *ControlHandler {
+func newControlHandler(srv *Server, st store.DataStore) *ControlHandler {
 	return &ControlHandler{
 		server:        srv,
 		store:         st,
@@ -73,7 +73,7 @@ func (ch *ControlHandler) broadcastToChannel(channelID int64, msg *pb.ControlMes
 }
 
 // StartControl starts the TCP/TLS control listener.
-func (s *Server) StartControl(st *store.Store) error {
+func (s *Server) StartControl(st store.DataStore) error {
 	cert, err := loadOrGenerateTLS(s.cfg)
 	if err != nil {
 		return fmt.Errorf("server: tls: %w", err)
@@ -113,7 +113,7 @@ func (s *Server) StartControl(st *store.Store) error {
 }
 
 // handleControlConn handles a single control connection lifecycle.
-func (s *Server) handleControlConn(handler *ControlHandler, conn net.Conn, st *store.Store) {
+func (s *Server) handleControlConn(handler *ControlHandler, conn net.Conn, st store.DataStore) {
 	defer func() { _ = conn.Close() }()
 
 	remoteAddr := conn.RemoteAddr().String()
@@ -283,7 +283,7 @@ func (s *Server) handleControlConn(handler *ControlHandler, conn net.Conn, st *s
 }
 
 // handleMessage dispatches a control message to the appropriate handler.
-func (s *Server) handleMessage(handler *ControlHandler, session *model.Session, msg *pb.ControlMessage, st *store.Store, conn net.Conn) {
+func (s *Server) handleMessage(handler *ControlHandler, session *model.Session, msg *pb.ControlMessage, st store.DataStore, conn net.Conn) {
 	switch {
 	case msg.JoinChannelRequest != nil:
 		s.handleJoinChannel(handler, session, msg.JoinChannelRequest, st, conn)
@@ -331,7 +331,7 @@ func (s *Server) handleMessage(handler *ControlHandler, session *model.Session, 
 	}
 }
 
-func (s *Server) handleJoinChannel(handler *ControlHandler, session *model.Session, req *pb.JoinChannelRequest, st *store.Store, conn net.Conn) {
+func (s *Server) handleJoinChannel(handler *ControlHandler, session *model.Session, req *pb.JoinChannelRequest, st store.DataStore, conn net.Conn) {
 	// Verify channel exists
 	ch, err := st.GetChannel(req.ChannelID)
 	if err != nil || ch == nil {
@@ -380,7 +380,7 @@ func (s *Server) handleJoinChannel(handler *ControlHandler, session *model.Sessi
 	s.broadcastServerState(st, handler)
 }
 
-func (s *Server) handleLeaveChannel(handler *ControlHandler, session *model.Session, st *store.Store, conn net.Conn) {
+func (s *Server) handleLeaveChannel(handler *ControlHandler, session *model.Session, st store.DataStore, conn net.Conn) {
 	chID := s.channels.Leave(session.ID)
 	session.ChannelID = 0
 
@@ -401,7 +401,7 @@ func (s *Server) handleLeaveChannel(handler *ControlHandler, session *model.Sess
 	s.broadcastServerState(st, handler)
 }
 
-func (s *Server) handleChannelList(st *store.Store, conn net.Conn) {
+func (s *Server) handleChannelList(st store.DataStore, conn net.Conn) {
 	channels, _ := st.ListChannels()
 	infos := s.buildChannelInfos(channels)
 	_ = protocol.WriteControlMessage(conn, &pb.ControlMessage{
@@ -409,7 +409,7 @@ func (s *Server) handleChannelList(st *store.Store, conn net.Conn) {
 	})
 }
 
-func (s *Server) handleUserState(handler *ControlHandler, session *model.Session, upd *pb.UserStateUpdate, st *store.Store) {
+func (s *Server) handleUserState(handler *ControlHandler, session *model.Session, upd *pb.UserStateUpdate, st store.DataStore) {
 	session.Muted = upd.Muted
 	session.Deafened = upd.Deafened
 
@@ -417,7 +417,7 @@ func (s *Server) handleUserState(handler *ControlHandler, session *model.Session
 	s.broadcastServerState(st, handler)
 }
 
-func (s *Server) handleCreateChannel(session *model.Session, req *pb.CreateChannelRequest, st *store.Store, conn net.Conn, handler *ControlHandler) {
+func (s *Server) handleCreateChannel(session *model.Session, req *pb.CreateChannelRequest, st store.DataStore, conn net.Conn, handler *ControlHandler) {
 	// Validate and sanitize channel name
 	name := sanitizeText(strings.TrimSpace(req.Name))
 	if len(name) == 0 || len(name) > 64 {
@@ -472,7 +472,7 @@ func (s *Server) handleCreateChannel(session *model.Session, req *pb.CreateChann
 	s.broadcastServerState(st, handler)
 }
 
-func (s *Server) handleDeleteChannel(session *model.Session, req *pb.DeleteChannelRequest, st *store.Store, conn net.Conn, handler *ControlHandler) {
+func (s *Server) handleDeleteChannel(session *model.Session, req *pb.DeleteChannelRequest, st store.DataStore, conn net.Conn, handler *ControlHandler) {
 	if errMsg := rbac.RequirePermission(session.Role, model.PermDeleteChannel); errMsg != "" {
 		sendError(conn, 30, errMsg)
 		return
@@ -497,7 +497,7 @@ func (s *Server) handleDeleteChannel(session *model.Session, req *pb.DeleteChann
 	s.broadcastServerState(st, handler)
 }
 
-func (s *Server) handleCreateToken(session *model.Session, req *pb.CreateTokenRequest, st *store.Store, conn net.Conn) {
+func (s *Server) handleCreateToken(session *model.Session, req *pb.CreateTokenRequest, st store.DataStore, conn net.Conn) {
 	if errMsg := rbac.RequirePermission(session.Role, model.PermManageTokens); errMsg != "" {
 		sendError(conn, 30, errMsg)
 		return
@@ -560,7 +560,7 @@ func (s *Server) handleKickUser(handler *ControlHandler, session *model.Session,
 	s.metrics.KickCount.Add(1)
 }
 
-func (s *Server) handleBanUser(handler *ControlHandler, session *model.Session, req *pb.BanUserRequest, st *store.Store, conn net.Conn) {
+func (s *Server) handleBanUser(handler *ControlHandler, session *model.Session, req *pb.BanUserRequest, st store.DataStore, conn net.Conn) {
 	if errMsg := rbac.RequirePermission(session.Role, model.PermBanUser); errMsg != "" {
 		sendError(conn, 30, errMsg)
 		return
@@ -643,7 +643,7 @@ func (s *Server) handleChatMessage(handler *ControlHandler, session *model.Sessi
 	s.metrics.ChatMessagesSent.Add(1)
 }
 
-func (s *Server) handleSetUserRole(handler *ControlHandler, session *model.Session, req *pb.SetUserRoleRequest, st *store.Store, conn net.Conn) {
+func (s *Server) handleSetUserRole(handler *ControlHandler, session *model.Session, req *pb.SetUserRoleRequest, st store.DataStore, conn net.Conn) {
 	if errMsg := rbac.RequirePermission(session.Role, model.PermManageRoles); errMsg != "" {
 		sendError(conn, 30, errMsg)
 		return
@@ -684,7 +684,7 @@ func (s *Server) handleSetUserRole(handler *ControlHandler, session *model.Sessi
 }
 
 // sendServerState sends the full server state to a single connection.
-func (s *Server) sendServerState(st *store.Store, conn net.Conn) {
+func (s *Server) sendServerState(st store.DataStore, conn net.Conn) {
 	channels, _ := st.ListChannels()
 	infos := s.buildChannelInfos(channels)
 	_ = protocol.WriteControlMessage(conn, &pb.ControlMessage{
@@ -693,7 +693,7 @@ func (s *Server) sendServerState(st *store.Store, conn net.Conn) {
 }
 
 // broadcastServerState sends updated server state to ALL connected sessions.
-func (s *Server) broadcastServerState(st *store.Store, handler *ControlHandler) {
+func (s *Server) broadcastServerState(st store.DataStore, handler *ControlHandler) {
 	channels, _ := st.ListChannels()
 	infos := s.buildChannelInfos(channels)
 	msg := &pb.ControlMessage{
@@ -726,7 +726,7 @@ func (s *Server) buildChannelInfos(channels []model.Channel) []pb.ChannelInfo {
 
 // cleanupTempChannel schedules a temp channel for deletion after a 5-minute grace period.
 // If someone rejoins within that window the deletion is cancelled.
-func (s *Server) cleanupTempChannel(channelID int64, st *store.Store) {
+func (s *Server) cleanupTempChannel(channelID int64, st store.DataStore) {
 	ch, err := st.GetChannel(channelID)
 	if err != nil || ch == nil || !ch.IsTemp {
 		return
@@ -765,15 +765,7 @@ func isClosedErr(err error) bool {
 
 // isValidUsername checks that a username is 1-32 alphanumeric/underscore/hyphen characters.
 func isValidUsername(name string) bool {
-	if len(name) == 0 || len(name) > 32 {
-		return false
-	}
-	for _, r := range name {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' && r != '-' {
-			return false
-		}
-	}
-	return true
+	return model.ValidateUsername(name) == nil
 }
 
 // sanitizeText strips control characters (except newline) from user-supplied text
@@ -790,7 +782,7 @@ func sanitizeText(s string) string {
 	}, s)
 }
 
-func (s *Server) handleExportData(session *model.Session, req *pb.ExportDataRequest, st *store.Store, conn net.Conn) {
+func (s *Server) handleExportData(session *model.Session, req *pb.ExportDataRequest, st store.DataStore, conn net.Conn) {
 	if errMsg := rbac.RequirePermission(session.Role, model.PermCreateChannel); errMsg != "" {
 		sendError(conn, 30, "admin only: "+errMsg)
 		return
@@ -821,7 +813,7 @@ func (s *Server) handleExportData(session *model.Session, req *pb.ExportDataRequ
 	})
 }
 
-func (s *Server) handleImportChannels(session *model.Session, req *pb.ImportChannelsRequest, st *store.Store, conn net.Conn, handler *ControlHandler) {
+func (s *Server) handleImportChannels(session *model.Session, req *pb.ImportChannelsRequest, st store.DataStore, conn net.Conn, handler *ControlHandler) {
 	if errMsg := rbac.RequirePermission(session.Role, model.PermCreateChannel); errMsg != "" {
 		sendError(conn, 30, "admin only: "+errMsg)
 		return
