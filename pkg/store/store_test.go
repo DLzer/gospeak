@@ -27,8 +27,7 @@ func NewTestSqlConn(t *testing.T) (*store.Store, error) {
 	}
 
 	t.Cleanup(func() {
-		store.Close()
-		if err != nil {
+		if err := store.Close(); err != nil {
 			fmt.Printf("Error closing database: %v\n", err)
 		}
 	})
