@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"fmt"
+	"math/rand"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,6 +35,17 @@ func NewTestSqlConn(t *testing.T) (*store.Store, error) {
 	})
 
 	return store, nil
+}
+
+func randomSequence(t *testing.T, n int) string {
+	t.Helper()
+	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(b)
 }
 
 func TestZeroTime(t *testing.T) {
@@ -319,98 +331,11 @@ func TestListUsers(t *testing.T) {
 	}
 }
 
-func TestCreateChannel(t *testing.T) {
-	t.Parallel()
-
-	type tcase struct {
-		name             string
-		description      string
-		maxUsers         int
-		expectedResponse *model.Channel
-		expecErr         bool
-	}
-
-	channelName, channelDescription := "New Channel", "A brand new channel"
-	channelMaxUsers := 10
-
-	tests := map[string]tcase{
-		"minimum_required_fields": {
-			name:        channelName,
-			description: channelDescription,
-			maxUsers:    channelMaxUsers,
-			expectedResponse: &model.Channel{
-				Name:             channelName,
-				Description:      channelDescription,
-				MaxUsers:         channelMaxUsers,
-				ParentID:         0,
-				IsTemp:           false,
-				AllowSubChannels: false,
-			},
-			expecErr: false,
-		},
-		"invalid_name": {
-			name:        "",
-			description: "Desc",
-			maxUsers:    1,
-			expecErr:    true,
-		},
-		"invalid_desc": {
-			name:        "Name",
-			description: "",
-			maxUsers:    1,
-			expecErr:    true,
-		},
-		"invalid_max_users": {
-			name:        "Name",
-			description: "Desc",
-			maxUsers:    0,
-			expecErr:    true,
-		},
-		"excessive_paramater_values": {
-			name:        "24433252080542468109190329288548376491503980265648043643151614656",
-			description: "24433252080542468109190329288548376491503980265648043643151614656",
-			maxUsers:    257,
-			expecErr:    true,
-		},
-	}
-
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			store, err := NewTestSqlConn(t)
-			if err != nil {
-				t.Fatalf("failed to open test connection: %v", err)
-			}
-
-			channel, err := store.CreateChannel(tc.name, tc.description, tc.maxUsers)
-			if tc.expecErr {
-				if err == nil {
-					t.Fatalf("CreateChannel: expected error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("CreateChannel: unexpected error: %v", err)
-			}
-
-			if diff := cmp.Diff(tc.expectedResponse, channel, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
-				t.Fatalf("CreateChannel mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestCreateChannelFull(t *testing.T) {
 	t.Parallel()
 
 	type tcase struct {
-		name             string
-		description      string
-		maxUsers         int
-		parentID         int64
-		isTempChannel    bool
-		allowSubChannels bool
+		inputChannel     *model.Channel
 		expectedResponse *model.Channel
 		expecErr         bool
 	}
@@ -422,12 +347,14 @@ func TestCreateChannelFull(t *testing.T) {
 
 	tests := map[string]tcase{
 		"minimum_required_fields": {
-			name:             channelName,
-			description:      channelDescription,
-			maxUsers:         channelMaxUsers,
-			parentID:         10,
-			isTempChannel:    channelIsTemp,
-			allowSubChannels: channelAllowsSubs,
+			inputChannel: &model.Channel{
+				Name:             channelName,
+				Description:      channelDescription,
+				MaxUsers:         channelMaxUsers,
+				ParentID:         10,
+				IsTemp:           channelIsTemp,
+				AllowSubChannels: channelAllowsSubs,
+			},
 			expectedResponse: &model.Channel{
 				Name:             channelName,
 				Description:      channelDescription,
@@ -439,28 +366,37 @@ func TestCreateChannelFull(t *testing.T) {
 			expecErr: false,
 		},
 		"invalid_name": {
-			name:        "",
-			description: "Desc",
-			maxUsers:    1,
-			expecErr:    true,
+			inputChannel: &model.Channel{
+				Name:             randomSequence(t, 65),
+				Description:      channelDescription,
+				MaxUsers:         channelMaxUsers,
+				ParentID:         10,
+				IsTemp:           channelIsTemp,
+				AllowSubChannels: channelAllowsSubs,
+			},
+			expecErr: true,
 		},
 		"invalid_desc": {
-			name:        "Name",
-			description: "",
-			maxUsers:    1,
-			expecErr:    true,
+			inputChannel: &model.Channel{
+				Name:             channelName,
+				Description:      randomSequence(t, 257),
+				MaxUsers:         channelMaxUsers,
+				ParentID:         10,
+				IsTemp:           channelIsTemp,
+				AllowSubChannels: channelAllowsSubs,
+			},
+			expecErr: true,
 		},
 		"invalid_max_users": {
-			name:        "Name",
-			description: "Desc",
-			maxUsers:    0,
-			expecErr:    true,
-		},
-		"excessive_paramater_values": {
-			name:        "24433252080542468109190329288548376491503980265648043643151614656",
-			description: "24433252080542468109190329288548376491503980265648043643151614656",
-			maxUsers:    257,
-			expecErr:    true,
+			inputChannel: &model.Channel{
+				Name:             channelName,
+				Description:      channelDescription,
+				MaxUsers:         257,
+				ParentID:         10,
+				IsTemp:           channelIsTemp,
+				AllowSubChannels: channelAllowsSubs,
+			},
+			expecErr: true,
 		},
 	}
 
@@ -473,7 +409,7 @@ func TestCreateChannelFull(t *testing.T) {
 				t.Fatalf("failed to open test connection: %v", err)
 			}
 
-			channel, err := store.CreateChannelFull(tc.name, tc.description, tc.maxUsers, tc.parentID, tc.isTempChannel, tc.allowSubChannels)
+			err = store.CreateChannel(tc.inputChannel)
 			if tc.expecErr {
 				if err == nil {
 					t.Fatalf("CreateChannelFull: expected error, got nil")
@@ -484,7 +420,7 @@ func TestCreateChannelFull(t *testing.T) {
 				t.Fatalf("CreateChannelFull: unexpected error: %v", err)
 			}
 
-			if diff := cmp.Diff(tc.expectedResponse, channel, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
+			if diff := cmp.Diff(tc.expectedResponse, tc.inputChannel, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
 				t.Fatalf("CreateChannelFull mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -495,19 +431,12 @@ func TestDeleteChannel(t *testing.T) {
 	t.Parallel()
 
 	type tcase struct {
-		name        string
-		description string
-		maxUsers    int
+		inputChannel *model.Channel
 	}
-
-	channelName, channelDescription := "New Channel", "A brand new channel"
-	channelMaxUsers := 10
 
 	tests := map[string]tcase{
 		"minimum_required_fields": {
-			name:        channelName,
-			description: channelDescription,
-			maxUsers:    channelMaxUsers,
+			inputChannel: model.NewChannel(),
 		},
 	}
 
@@ -520,16 +449,16 @@ func TestDeleteChannel(t *testing.T) {
 				t.Fatalf("failed to open test connection: %v", err)
 			}
 
-			channel, err := store.CreateChannel(tc.name, tc.description, tc.maxUsers)
+			err = store.CreateChannel(tc.inputChannel)
 			if err != nil {
 				t.Fatalf("CreateChannel: unexpected error: %v", err)
 			}
 
-			if err := store.DeleteChannel(channel.ID); err != nil {
+			if err := store.DeleteChannel(tc.inputChannel.ID); err != nil {
 				t.Fatalf("DeleteChannel: unexpected error: %v", err)
 			}
 
-			deletedChannel, err := store.GetChannel(channel.ID)
+			deletedChannel, err := store.GetChannel(tc.inputChannel.ID)
 			if err != nil {
 				t.Fatalf("GetChannel: unexpected error: %v", err)
 			}
@@ -544,18 +473,14 @@ func TestListChannels(t *testing.T) {
 	t.Parallel()
 
 	type tcase struct {
-		name        string
-		description string
-		iter        int
+		inputChannel *model.Channel
+		iter         int
 	}
-
-	channelName, channelDescription := "Channel", "Description"
 
 	tests := map[string]tcase{
 		"minimum_required_fields": {
-			name:        channelName,
-			description: channelDescription,
-			iter:        10,
+			inputChannel: model.NewChannel(),
+			iter:         10,
 		},
 	}
 
@@ -570,15 +495,22 @@ func TestListChannels(t *testing.T) {
 
 			var expectedChannels = make(map[string]*model.Channel)
 			for i := range tc.iter {
-				channelName := fmt.Sprintf("%s_%d", tc.name, i)
-				channelDesc := fmt.Sprintf("%s_%d", tc.description, i)
+				channelName := fmt.Sprintf("%s_%d", tc.inputChannel.Name, i)
+				channelDesc := fmt.Sprintf("%s_%d", tc.inputChannel.Description, i)
 
-				channel, err := store.CreateChannel(channelName, channelDesc, i+1)
+				tempChannel := &model.Channel{
+					Name:        channelName,
+					Description: channelDesc,
+					MaxUsers:    i + 1,
+					ParentID:    1,
+				}
+
+				err := store.CreateChannel(tempChannel)
 				if err != nil {
 					t.Fatalf("CreateChannel: unexpected error: %v", err)
 				}
 
-				expectedChannels[channelName] = channel
+				expectedChannels[channelName] = tempChannel
 			}
 
 			channelList, err := store.ListChannels()
@@ -609,19 +541,12 @@ func TestGetChannel(t *testing.T) {
 	t.Parallel()
 
 	type tcase struct {
-		name        string
-		description string
-		maxUsers    int
+		inputChannel *model.Channel
 	}
-
-	channelName, channelDescription := "New Channel", "A brand new channel"
-	channelMaxUsers := 10
 
 	tests := map[string]tcase{
 		"minimum_required_fields": {
-			name:        channelName,
-			description: channelDescription,
-			maxUsers:    channelMaxUsers,
+			inputChannel: model.NewChannel(),
 		},
 	}
 
@@ -634,17 +559,17 @@ func TestGetChannel(t *testing.T) {
 				t.Fatalf("failed to open test connection: %v", err)
 			}
 
-			want, err := store.CreateChannel(tc.name, tc.description, tc.maxUsers)
+			err = store.CreateChannel(tc.inputChannel)
 			if err != nil {
 				t.Fatalf("CreateChannel: unexpected error: %v", err)
 			}
 
-			got, err := store.GetChannel(want.ID)
+			got, err := store.GetChannel(tc.inputChannel.ID)
 			if err != nil {
 				t.Fatalf("GetChannel: unexpected error: %v", err)
 			}
 
-			if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
+			if diff := cmp.Diff(tc.inputChannel, got, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
 				t.Fatalf("GetChannel mismatch (-want +got):\n%s", diff)
 			}
 		})
@@ -681,24 +606,24 @@ func TestGetChannelByNameAndParent(t *testing.T) {
 				t.Fatalf("failed to open test connection: %v", err)
 			}
 
-			parent, err := store.CreateChannelFull(tc.parentChannel.Name, tc.parentChannel.Description, 10, 0, false, false)
+			err = store.CreateChannel(tc.parentChannel)
 			if err != nil {
 				t.Fatalf("CreateChannel: unexpected error creating parent: %v", err)
 			}
 
-			tc.childChannel.ParentID = parent.ID
+			tc.childChannel.ParentID = tc.parentChannel.ID
 
-			want, err := store.CreateChannelFull(tc.childChannel.Name, tc.childChannel.Description, 10, parent.ID, false, false)
+			err = store.CreateChannel(tc.childChannel)
 			if err != nil {
 				t.Fatalf("CreateChannel: unexpected error creating child: %v", err)
 			}
 
-			got, err := store.GetChannelByNameAndParent(want.Name, want.ParentID)
+			got, err := store.GetChannelByNameAndParent(tc.childChannel.Name, tc.childChannel.ParentID)
 			if err != nil {
 				t.Fatalf("GetChannel: unexpected error: %v", err)
 			}
 
-			if diff := cmp.Diff(want, got, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
+			if diff := cmp.Diff(tc.childChannel, got, cmpopts.IgnoreFields(model.Channel{}, "ID", "CreatedAt")); diff != "" {
 				t.Fatalf("GetChannel mismatch (-want +got):\n%s", diff)
 			}
 		})
