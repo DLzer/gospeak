@@ -36,10 +36,7 @@ type DataStore interface {
 	// ---- Channels ----
 
 	// CreateChannel creates a new channel with basic fields.
-	CreateChannel(name, description string, maxUsers int) (*model.Channel, error)
-
-	// CreateChannelFull creates a new channel with all options.
-	CreateChannelFull(name, description string, maxUsers int, parentID int64, isTemp, allowSubChannels bool) (*model.Channel, error)
+	CreateChannel(channel *model.Channel) error
 
 	// DeleteChannel deletes a channel by ID.
 	DeleteChannel(id int64) error

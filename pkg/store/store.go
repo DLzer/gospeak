@@ -216,38 +216,37 @@ func (s *Store) ListUsers() ([]model.User, error) {
 
 // ---- Channels ----
 
-// CreateChannel creates a new channel.
-func (s *Store) CreateChannel(name, description string, maxUsers int) (*model.Channel, error) {
-	return s.CreateChannelFull(name, description, maxUsers, 0, false, false)
-}
-
 // CreateChannelFull creates a new channel with all options.
-func (s *Store) CreateChannelFull(name, description string, maxUsers int, parentID int64, isTemp, allowSubChannels bool) (*model.Channel, error) {
+func (s *Store) CreateChannel(channel *model.Channel) error {
+	if err := channel.Validate(); err != nil {
+		return err
+	}
+
 	isTempInt := 0
-	if isTemp {
+	if channel.IsTemp {
 		isTempInt = 1
 	}
 	allowSubInt := 0
-	if allowSubChannels {
+	if channel.AllowSubChannels {
 		allowSubInt = 1
 	}
-	res, err := s.db.ExecContext(context.Background(),
+	res, err := s.db.ExecContext(
+		context.Background(),
 		"INSERT INTO channels (name, description, max_users, parent_id, is_temp, allow_sub_channels) VALUES (?, ?, ?, ?, ?, ?)",
-		name, description, maxUsers, parentID, isTempInt, allowSubInt)
+		channel.Name,
+		channel.Description,
+		channel.MaxUsers,
+		channel.ParentID,
+		isTempInt,
+		allowSubInt,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("store: create channel: %w", err)
+		return fmt.Errorf("store: create channel: %w", err)
 	}
-	id, _ := res.LastInsertId()
-	return &model.Channel{
-		ID:               id,
-		Name:             name,
-		Description:      description,
-		MaxUsers:         maxUsers,
-		ParentID:         parentID,
-		IsTemp:           isTemp,
-		AllowSubChannels: allowSubChannels,
-		CreatedAt:        time.Now(),
-	}, nil
+	channel.ID, _ = res.LastInsertId()
+	channel.CreatedAt = time.Now()
+
+	return nil
 }
 
 // DeleteChannel deletes a channel by ID.

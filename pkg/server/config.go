@@ -74,11 +74,18 @@ func ensureChannel(st store.DataStore, ch ChannelYAML, parentID int64) error {
 	if existing != nil {
 		channelID = existing.ID
 	} else {
-		created, err := st.CreateChannelFull(ch.Name, ch.Description, ch.MaxUsers, parentID, false, ch.AllowSubChannels)
-		if err != nil {
+		channel := &model.Channel{
+			Name:             ch.Name,
+			Description:      ch.Description,
+			MaxUsers:         ch.MaxUsers,
+			ParentID:         parentID,
+			IsTemp:           false,
+			AllowSubChannels: ch.AllowSubChannels,
+		}
+		if err := st.CreateChannel(channel); err != nil {
 			return err
 		}
-		channelID = created.ID
+		channelID = channel.ID
 		slog.Debug("created channel from config", "name", ch.Name, "parent", parentID)
 	}
 

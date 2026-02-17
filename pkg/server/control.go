@@ -459,8 +459,15 @@ func (s *Server) handleCreateChannel(session *model.Session, req *pb.CreateChann
 		desc = desc[:256]
 	}
 
-	ch, err := st.CreateChannelFull(name, desc, int(req.MaxUsers), req.ParentID, req.IsTemp, req.AllowSubChannels)
-	if err != nil {
+	ch := &model.Channel{
+		Name:             name,
+		Description:      desc,
+		MaxUsers:         int(req.MaxUsers),
+		ParentID:         req.ParentID,
+		IsTemp:           req.IsTemp,
+		AllowSubChannels: req.AllowSubChannels,
+	}
+	if err := st.CreateChannel(ch); err != nil {
 		sendError(conn, 31, "failed to create channel: "+err.Error())
 		return
 	}
