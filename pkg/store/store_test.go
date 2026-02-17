@@ -1,8 +1,9 @@
 package store_test
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
-	"math/rand"
 	"path/filepath"
 	"testing"
 	"time"
@@ -37,15 +38,18 @@ func NewTestSqlConn(t *testing.T) (*store.Store, error) {
 	return store, nil
 }
 
-func randomSequence(t *testing.T, n int) string {
+func generateRandomSafeString(t *testing.T, byteLength int) string {
 	t.Helper()
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+	bytes := make([]byte, byteLength)
+	// Use crypto/rand.Read to fill the byte slice with random bytes from the OS's secure random number generator.
+	// This function does not need seeding and is safe for concurrent use.
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return ""
 	}
-	return string(b)
+
+	encoded := base64.URLEncoding.EncodeToString(bytes)
+	return encoded
 }
 
 func TestZeroTime(t *testing.T) {
@@ -367,7 +371,7 @@ func TestCreateChannelFull(t *testing.T) {
 		},
 		"invalid_name": {
 			inputChannel: &model.Channel{
-				Name:             randomSequence(t, 65),
+				Name:             generateRandomSafeString(t, 65),
 				Description:      channelDescription,
 				MaxUsers:         channelMaxUsers,
 				ParentID:         10,
@@ -379,7 +383,7 @@ func TestCreateChannelFull(t *testing.T) {
 		"invalid_desc": {
 			inputChannel: &model.Channel{
 				Name:             channelName,
-				Description:      randomSequence(t, 257),
+				Description:      generateRandomSafeString(t, 257),
 				MaxUsers:         channelMaxUsers,
 				ParentID:         10,
 				IsTemp:           channelIsTemp,
