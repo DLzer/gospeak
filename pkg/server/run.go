@@ -32,7 +32,7 @@ func (s *Server) Run() error {
 	// Ensure default "Lobby" channel exists
 	channels, _ := st.ListChannels()
 	if len(channels) == 0 {
-		if _, err := st.CreateChannel("Lobby", "Default voice channel", 0); err != nil {
+		if err := st.CreateChannel(model.NewChannel()); err != nil {
 			return fmt.Errorf("server: create lobby: %w", err)
 		}
 		slog.Info("created default Lobby channel")
