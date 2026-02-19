@@ -15,11 +15,10 @@ import (
 
 // Run starts the server and blocks until shutdown signal.
 func (s *Server) Run() error {
-	// Open database
-	st, err := store.New(s.cfg.DBPath)
-	if err != nil {
-		return fmt.Errorf("server: open store: %w", err)
+	if s.store == nil {
+		return fmt.Errorf("server: missing store dependency")
 	}
+	st := s.store
 	defer func() { _ = st.Close() }()
 
 	// Generate shared voice encryption key

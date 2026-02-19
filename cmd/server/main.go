@@ -68,7 +68,13 @@ func main() {
 		return
 	}
 
-	srv := server.New(cfg)
+	st, err := store.New(cfg.DBPath)
+	if err != nil {
+		slog.Error("open database", "err", err)
+		os.Exit(1)
+	}
+
+	srv := server.New(cfg, server.Dependencies{Store: st})
 	if err := srv.Run(); err != nil {
 		slog.Error("server error", "err", err)
 		os.Exit(1)

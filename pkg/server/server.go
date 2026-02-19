@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/NicolasHaas/gospeak/pkg/store"
 )
 
 // Config holds server configuration.
@@ -34,6 +36,12 @@ type Config struct {
 	// CLI-only actions (run and exit)
 	ExportUsers    bool // export all users as YAML and exit
 	ExportChannels bool // export all channels as YAML and exit
+}
+
+// Dependencies holds external dependencies for the server.
+// Server assumes ownership of Store and will Close() it on shutdown.
+type Dependencies struct {
+	Store store.DataStore
 }
 
 // DefaultConfig returns a config with sensible defaults.
@@ -131,6 +139,7 @@ type Server struct {
 	sessions    *SessionManager
 	channels    *ChannelManager
 	metrics     *Metrics
+	store       store.DataStore
 	controlConn net.Listener
 	voiceConn   *net.UDPConn
 	voiceKey    []byte // shared AES-128 key for all voice encryption
@@ -139,13 +148,14 @@ type Server struct {
 }
 
 // New creates a new Server instance.
-func New(cfg Config) *Server {
+func New(cfg Config, deps Dependencies) *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
 		cfg:      cfg,
 		sessions: NewSessionManager(),
 		channels: NewChannelManager(),
 		metrics:  NewMetrics(),
+		store:    deps.Store,
 		ctx:      ctx,
 		cancel:   cancel,
 	}
