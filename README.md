@@ -94,6 +94,7 @@ Enter the server address, your username, and (optionally) a token to connect.
 | [Security](docs/security.md) | Encryption details, key distribution, RBAC, threat model |
 | [Audio Pipeline](docs/audio.md) | Capture/playback, Opus codec, VAD, jitter buffer |
 | [Building](docs/building.md) | Container builds, local dev setup, build targets |
+| [Deployment](deploy/README.md) | Rocky Linux 10 cloud-init example |
 
 ## Server Configuration
 
