@@ -1,0 +1,114 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+users:
+  - default
+  - name: gospeak
+    groups: [wheel]
+    shell: /bin/bash
+    sudo: ["ALL=(ALL) NOPASSWD:ALL"]
+    ssh_authorized_keys:
+      - "ssh-ed25519 AAAA_REPLACE_WITH_YOUR_PUBLIC_KEY"
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-gospeak.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+      ChallengeResponseAuthentication no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+      AllowUsers gospeak
+  - path: /etc/dnf/automatic.conf
+    permissions: "0644"
+    content: |
+      [commands]
+      apply_updates = yes
+      upgrade_type = default
+      reboot = when-needed
+      random_sleep = 0
+
+      [emitters]
+      emit_via = motd
+  - path: /etc/containers/systemd/gospeak.container
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=GoSpeak server container
+      Wants=network-online.target
+      After=network-online.target
+
+      [Container]
+      Image=ghcr.io/nicolashaas/gospeak:latest
+      ContainerName=gospeak
+      PublishPort=9600:9600
+      PublishPort=9601:9601/udp
+      Volume=/var/lib/gospeak:/data:Z
+      AutoUpdate=registry
+      PodmanArgs=--cap-drop=ALL --security-opt=no-new-privileges
+      Exec=-open -data /data -db /data/gospeak.db
+
+      [Service]
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/systemd/system/podman-image-prune.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Remove unused Podman images
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/bin/podman image prune -f
+  - path: /etc/systemd/system/podman-image-prune.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Weekly Podman image prune
+
+      [Timer]
+      OnCalendar=Sun 02:30
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  - path: /etc/systemd/system/dnf-automatic.timer.d/override.conf
+    permissions: "0644"
+    content: |
+      [Timer]
+      OnCalendar=
+      OnCalendar=03:00
+      RandomizedDelaySec=0
+  - path: /etc/systemd/system/podman-auto-update.timer.d/override.conf
+    permissions: "0644"
+    content: |
+      [Timer]
+      OnCalendar=
+      OnCalendar=03:30
+      RandomizedDelaySec=0
+
+runcmd:
+  - [ dnf, -y, install, dnf-plugins-core ]
+  - [ dnf, config-manager, --set-enabled, crb ]
+  - [ dnf, -y, install, epel-release ]
+  - [ dnf, -y, install, podman, firewalld, fail2ban, dnf-automatic ]
+  - [ mkdir, -p, /var/lib/gospeak ]
+  - [ mkdir, -p, /etc/systemd/system/dnf-automatic.timer.d ]
+  - [ mkdir, -p, /etc/systemd/system/podman-auto-update.timer.d ]
+  - [ systemctl, enable, --now, firewalld ]
+  - [ firewall-cmd, --permanent, --add-service=ssh ]
+  - [ firewall-cmd, --permanent, --add-port=9600/tcp ]
+  - [ firewall-cmd, --permanent, --add-port=9601/udp ]
+  - [ firewall-cmd, --reload ]
+  - [ systemctl, enable, --now, fail2ban ]
+  - [ systemctl, enable, --now, dnf-automatic.timer ]
+  - [ systemctl, daemon-reload ]
+  - [ systemctl, enable, --now, gospeak.service ]
+  - [ systemctl, enable, --now, podman-auto-update.timer ]
+  - [ systemctl, enable, --now, podman-image-prune.timer ]
+  - [ systemctl, restart, sshd ]
