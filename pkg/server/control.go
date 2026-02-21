@@ -212,8 +212,6 @@ func (s *Server) handleControlConn(handler *ControlHandler, conn net.Conn, st st
 	// Create session (voice key is shared server-wide for SFU model)
 	session := s.sessions.Create(user.ID, user.Username, sessionRole)
 	sessionID := session.ID
-	userID := session.UserID
-	username := session.Username
 
 	handler.setConn(sessionID, conn)
 	defer func() {
@@ -223,14 +221,14 @@ func (s *Server) handleControlConn(handler *ControlHandler, conn net.Conn, st st
 		s.sessions.Remove(sessionID)
 		s.metrics.ActiveConnections.Add(-1)
 		s.metrics.TotalDisconnects.Add(1)
-		slog.Info("client disconnected", "user", username, "session", sessionID)
+		slog.Info("client disconnected", "user", user.Username, "session", sessionID)
 
 		if chID > 0 {
 			handler.broadcastToChannel(chID, &pb.ControlMessage{
 				ChannelLeftEvent: &pb.ChannelLeftEvent{
 					ChannelID: chID,
-					UserID:    userID,
-					Username:  username,
+					UserID:    user.ID,
+					Username:  user.Username,
 				},
 			}, sessionID)
 

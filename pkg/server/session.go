@@ -64,11 +64,11 @@ func (sm *SessionManager) Create(userID int64, username string, role model.Role)
 	return sess
 }
 
-// GetSnapshot returns an immutable snapshot of the session.
-func (sm *SessionManager) GetSnapshot(id uint32) (SessionSnapshot, bool) {
+// GetSnapshot returns an immutable snapshot of the session by session ID.
+func (sm *SessionManager) GetSnapshot(sessionID uint32) (SessionSnapshot, bool) {
 	sm.mu.RLock()
 	defer sm.mu.RUnlock()
-	s, ok := sm.sessions[id]
+	s, ok := sm.sessions[sessionID]
 	if !ok {
 		return SessionSnapshot{}, false
 	}
